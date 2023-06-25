@@ -1,5 +1,5 @@
 import fetch, { RequestInit } from "node-fetch"
-import async, { QueueObject } from "async"
+import async from "async"
 import { WriteStream, createWriteStream } from "fs"
 import { open } from "fs/promises"
 import path from "path"
