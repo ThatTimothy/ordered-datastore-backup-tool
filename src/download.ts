@@ -159,6 +159,7 @@ export default async function run(config: Config) {
 
     // Initialize everything
     let backoff = STARTING_BACKOFF
+    let running = true
 
     const BASE_URL = `${ORDERED_DATASTORE_BASE}${config.Id}/orderedDataStores/${
         config.Name
@@ -225,6 +226,8 @@ export default async function run(config: Config) {
 
     // Define teardown function for when we are done OR if we need to exit early
     const teardown = async () => {
+        running = false
+
         if (!taskQueue.idle()) {
             await taskQueue.drain()
         }
@@ -257,7 +260,7 @@ export default async function run(config: Config) {
     console.log("Set up write streams, starting download...")
 
     // Begin main download loop
-    while (true) {
+    while (running) {
         // Download this page, if failed output error
         const maybeJson = await downloadPage(position, BASE_URL, options).catch(
             (reason) => console.error(reason),
