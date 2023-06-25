@@ -39,6 +39,7 @@ function write(stream: WriteStream, chunk: any): Promise<void> {
     })
 }
 
+// Gets the last position from the log
 async function getLastPosition(config: Config): Promise<Position> {
     const logPath = path.join(config.OutputDir, LOG_STORE_PATH)
     const exists = pathExists(logPath)
@@ -54,6 +55,8 @@ async function getLastPosition(config: Config): Promise<Position> {
 
     const file = await open(logPath)
     let i = 2
+
+    // Read line by line, updating the latest working pageToken we find
     for await (const line of file.readLines()) {
         if (line.length == 0) {
             continue
@@ -79,6 +82,7 @@ async function downloadPage(
     BASE_URL: string,
     options: RequestInit,
 ): Promise<unknown> {
+    // Initialize request
     const url = new URL(BASE_URL)
     url.searchParams.append("max_page_size", "100")
     url.searchParams.append("order_by", "desc")
@@ -86,10 +90,12 @@ async function downloadPage(
         url.searchParams.append("page_token", position.nextPageToken)
     }
 
+    // Make request
     const response = await fetch(url, options).catch((reason) => {
         throw new Error(`Failed to fetch ${url}: ${reason}`)
     })
 
+    // Validate text, and parses to json
     const text = await response.text().catch(async (reason) => {
         throw new Error(
             `Couldn't get response text at ${url}, ${response.status} ${response.statusText}, error: ${reason}`,
@@ -107,6 +113,7 @@ async function downloadPage(
         }
     })
 
+    // Validate 200-level status, excluding 429 to be handled later
     if (
         response.status != 429 &&
         response.status < 200 &&
@@ -117,6 +124,7 @@ async function downloadPage(
         )
     }
 
+    // Handle 429 == hit ratelimit
     if (response.status == 429) {
         throw new Error(
             `Ratelimit at ${url}, ${response.status} ${response.statusText}`,
@@ -135,16 +143,20 @@ async function downloadPage(
         )
     }
 
+    // Actually good now
     return json
 }
 
 export default async function run(config: Config) {
+    // Try to load the last position if we can
     const position = await getLastPosition(config)
 
+    // Output resume message if resuming
     if (position.page != 1) {
         console.log(`Resuming previous download at page ${position.page}`)
     }
 
+    // Initialize everything
     let backoff = STARTING_BACKOFF
 
     const BASE_URL = `${ORDERED_DATASTORE_BASE}${config.Id}/orderedDataStores/${
@@ -210,6 +222,7 @@ export default async function run(config: Config) {
         console.error(`Error: ${error} on log: ${log}`)
     })
 
+    // Define teardown function for when we are done OR if we need to exit early
     const teardown = async () => {
         if (!taskQueue.idle()) {
             await taskQueue.drain()
@@ -235,17 +248,21 @@ export default async function run(config: Config) {
         console.log("Closed write streams")
     }
 
+    // Bind teardown to process exit
     ;["SIGINT", "SIGTERM", "SIGQUIT"].forEach((signal) => {
         process.on(signal, teardown)
     })
 
     console.log("Set up write streams, starting download...")
 
+    // Begin main download loop
     while (true) {
+        // Download this page, if failed output error
         const maybeJson = await downloadPage(position, BASE_URL, options).catch(
             (reason) => console.error(reason),
         )
 
+        // If something went wrong, backoff
         if (!maybeJson || !maybeJson["entries"]) {
             console.log(`Backing off for ${backoff}s`)
             await sleep(backoff)
@@ -253,6 +270,7 @@ export default async function run(config: Config) {
             continue
         }
 
+        // Otherwise, add the write task to the task queue
         const json = maybeJson
         const nextToken = json["nextPageToken"]
 
@@ -267,11 +285,13 @@ export default async function run(config: Config) {
             break
         }
 
-        backoff = STARTING_BACKOFF
+        // Update variables for next loop
+        backoff = STARTING_BACKOFF // We reset this since we had a successful request
         position.nextPageToken = nextToken
         position.page += 1
     }
 
+    // Finally, teardown
     await teardown()
 
     console.log("Done")
