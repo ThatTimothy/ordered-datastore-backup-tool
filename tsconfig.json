@@ -1,0 +1,14 @@
+{
+    "compilerOptions": {
+        /* Visit https://aka.ms/tsconfig to read more about this file */
+
+        "lib": ["ES6"],
+        "target": "ES6",
+        "module": "CommonJS",
+        "rootDir": "src",
+        "outDir": "build",
+        "esModuleInterop": true
+    },
+    "include": ["src/**/*.ts"],
+    "exclude": ["node_modules"]
+}
