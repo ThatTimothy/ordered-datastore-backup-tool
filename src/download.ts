@@ -14,9 +14,9 @@ const ORDERED_DATASTORE_BASE =
 const USER_AGENT =
     "ordered-datastore-backup-tool (https://github.com/ThisStudio/ordered-datastore-backup-tool)"
 // If we get ratelimited / server error, we want to backoff for an amount of time
-const STARTING_BACKOFF = 5 // This is the backoff we start at
-const INCREMENT_BACKOFF = 5 // Every repeated backoff we have increments the amount we wait by this
-const INCREMENT_RETURN_BACKOFF = 0.25 // Every successful request brings us back to STARTING_BACKOFF by this increment
+const STARTING_BACKOFF = 15 // This is the backoff we start at
+const INCREMENT_BACKOFF = 10 // Every repeated backoff we have increments the amount we wait by this
+const INCREMENT_RETURN_BACKOFF = INCREMENT_BACKOFF / 10 // Every successful request brings us back to STARTING_BACKOFF by this increment
 
 interface Position {
     nextPageToken: string | null
