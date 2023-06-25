@@ -225,16 +225,24 @@ export default async function run(config: Config) {
     const teardown = async () => {
         running = false
 
+        // Wait for write task queue to deplete
         if (!writeTaskQueue.idle()) {
             await writeTaskQueue.drain()
         }
 
+        // Drain fires when 1 payload is left sometimes, so need to verify
+        while (writeTaskQueue.payload > 0) {
+            await sleep(0.1)
+        }
+
         console.log("Finished writing")
 
+        // Close the open streams
         await new Promise<void>((resolve) => {
             if (dataStream.closed && logStream.closed) {
                 resolve()
             }
+
             dataStream.end(() => {
                 logStream.end(() => {
                     resolve()
