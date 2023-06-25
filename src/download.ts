@@ -16,6 +16,7 @@ const USER_AGENT =
 // If we get ratelimited / server error, we want to backoff for an amount of time
 const STARTING_BACKOFF = 5 // This is the backoff we start at
 const INCREMENT_BACKOFF = 5 // Every repeated backoff we have increments the amount we wait by this
+const INCREMENT_RETURN_BACKOFF = 0.5 // Every successful request brings us back to STARTING_BACKOFF by this increment
 
 interface Position {
     nextPageToken: string | null
@@ -296,7 +297,10 @@ export default async function run(config: Config) {
         }
 
         // Update variables for next loop
-        backoff = STARTING_BACKOFF // We reset this since we had a successful request
+        backoff = Math.max(
+            backoff - INCREMENT_RETURN_BACKOFF,
+            INCREMENT_BACKOFF,
+        ) // Slowly return to normal after success
         position.nextPageToken = nextToken
         position.page += 1
     }
