@@ -95,13 +95,32 @@ async function downloadPage(
         throw new Error(`Failed to fetch ${url}: ${reason}`)
     })
 
-    // Validate text, and parses to json
+    // Validate text
     const text = await response.text().catch(async (reason) => {
         throw new Error(
             `Couldn't get response text at ${url}, ${response.status} ${response.statusText}, error: ${reason}`,
         )
     })
 
+    // Validate 200-level status, excluding 429 to be handled later
+    if (
+        response.status != 429 &&
+        response.status < 200 &&
+        response.status >= 300
+    ) {
+        throw new Error(
+            `Unexpected error at ${url}, ${response.status} ${response.statusText}: ${text}`,
+        )
+    }
+
+    // Handle 429 == hit ratelimit
+    if (response.status == 429) {
+        throw new Error(
+            `Ratelimit at ${url}, ${response.status} ${response.statusText}`,
+        )
+    }
+
+    // Parse to json
     const json = await new Promise((resolve) => {
         try {
             const json = JSON.parse(text)
@@ -112,24 +131,6 @@ async function downloadPage(
             )
         }
     })
-
-    // Validate 200-level status, excluding 429 to be handled later
-    if (
-        response.status != 429 &&
-        response.status < 200 &&
-        response.status >= 300
-    ) {
-        throw new Error(
-            `Unexpected error at ${url}, ${response.status} ${response.statusText}: ${json}`,
-        )
-    }
-
-    // Handle 429 == hit ratelimit
-    if (response.status == 429) {
-        throw new Error(
-            `Ratelimit at ${url}, ${response.status} ${response.statusText}`,
-        )
-    }
 
     // Okay, we should be good now
     const entries = json["entries"]
