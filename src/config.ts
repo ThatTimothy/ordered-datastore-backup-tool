@@ -1,7 +1,7 @@
 import prompts from "prompts"
 import { readFile, mkdir, writeFile } from "fs/promises"
-import { accessSync } from "fs"
 import path from "path"
+import { pathExists } from "./util"
 
 const KEY_STORE_PATH = "key.txt"
 const CONFIG_STORE_PATH = "config.json"
@@ -45,15 +45,6 @@ export interface Config {
 }
 
 type SavedConfig = Omit<Config, "Key">
-
-function pathExists(path: string): boolean {
-    try {
-        accessSync(path)
-        return true
-    } catch {
-        return false
-    }
-}
 
 async function saveConfig(saved: SavedConfig) {
     await writeFile(

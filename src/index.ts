@@ -3,7 +3,7 @@ import run from "./download"
 
 async function main() {
     const config = await getConfig()
-    run(config)
+    await run(config)
 }
 
 main()
