@@ -8,3 +8,7 @@ export function pathExists(path: string): boolean {
         return false
     }
 }
+
+export function formatSeconds(seconds: number): string {
+    return (Math.round(seconds * 100) / 100).toFixed(2)
+}

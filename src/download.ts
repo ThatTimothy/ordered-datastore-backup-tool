@@ -3,7 +3,7 @@ import async from "async"
 import { WriteStream, createWriteStream } from "fs"
 import { open } from "fs/promises"
 import path from "path"
-import { pathExists } from "./util"
+import { formatSeconds, pathExists } from "./util"
 import { Config } from "./config"
 
 const DATA_OUTPUT = "data.csv"
@@ -16,7 +16,7 @@ const USER_AGENT =
 // If we get ratelimited / server error, we want to backoff for an amount of time
 const STARTING_BACKOFF = 15 // This is the backoff we start at
 const INCREMENT_BACKOFF = 10 // Every repeated backoff we have increments the amount we wait by this
-const INCREMENT_RETURN_BACKOFF = INCREMENT_BACKOFF / 10 // Every successful request brings us back to STARTING_BACKOFF by this increment
+const INCREMENT_RETURN_BACKOFF = 0.1 // Every successful request brings us back to STARTING_BACKOFF by this increment
 
 interface Position {
     nextPageToken: string | null
@@ -270,7 +270,7 @@ export default async function run(config: Config) {
 
         // If something went wrong, backoff
         if (!maybeJson || !maybeJson["entries"]) {
-            console.log(`Backing off for ${backoff}s`)
+            console.log(`Backing off for ${formatSeconds(backoff)}s`)
             await sleep(backoff)
             backoff += INCREMENT_BACKOFF
             continue
