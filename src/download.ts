@@ -1,5 +1,5 @@
 import fetch, { RequestInit } from "node-fetch"
-import async from "async"
+import async, { QueueObject } from "async"
 import { WriteStream, createWriteStream } from "fs"
 import { open } from "fs/promises"
 import path from "path"
@@ -74,6 +74,70 @@ async function getLastPosition(config: Config): Promise<Position> {
     return result
 }
 
+async function downloadPage(
+    position: Position,
+    BASE_URL: string,
+    options: RequestInit,
+): Promise<unknown> {
+    const url = new URL(BASE_URL)
+    url.searchParams.append("max_page_size", "100")
+    url.searchParams.append("order_by", "desc")
+    if (position.nextPageToken) {
+        url.searchParams.append("page_token", position.nextPageToken)
+    }
+
+    const response = await fetch(url, options).catch((reason) => {
+        throw new Error(`Failed to fetch ${url}: ${reason}`)
+    })
+
+    const text = await response.text().catch(async (reason) => {
+        throw new Error(
+            `Couldn't get response text at ${url}, ${response.status} ${response.statusText}, error: ${reason}`,
+        )
+    })
+
+    const json = await new Promise((resolve) => {
+        try {
+            const json = JSON.parse(text)
+            resolve(json)
+        } catch (reason) {
+            throw new Error(
+                `Couldn't parse to JSON at ${url}, ${response.status} ${response.statusText}: ${reason}, raw text: ${text}`,
+            )
+        }
+    })
+
+    if (
+        response.status != 429 &&
+        response.status < 200 &&
+        response.status >= 300
+    ) {
+        throw new Error(
+            `Unexpected error at ${url}, ${response.status} ${response.statusText}: ${json}`,
+        )
+    }
+
+    if (response.status == 429) {
+        throw new Error(
+            `Ratelimit at ${url}, ${response.status} ${response.statusText}`,
+        )
+    }
+
+    // Okay, we should be good now
+    const entries = json["entries"]
+
+    // But we validate the data structure because it's Roblox
+    if (!entries) {
+        throw new Error(
+            `Got invalid data structure at ${url}, ${response.status} ${
+                response.statusText
+            }: ${JSON.stringify(json, null, 4)}`,
+        )
+    }
+
+    return json
+}
+
 export default async function run(config: Config) {
     const position = await getLastPosition(config)
 
@@ -108,20 +172,6 @@ export default async function run(config: Config) {
             flags: "a",
         },
     )
-
-    ;["SIGINT", "SIGTERM", "SIGQUIT"].forEach((signal) => {
-        process.on(signal, () => {
-            if (dataStream.closed) {
-                return
-            }
-            dataStream.end(() => {
-                logStream.end(() => {
-                    console.log("Closed write streams")
-                    process.exit()
-                })
-            })
-        })
-    })
 
     const taskQueue = async.queue<unknown>(async (json, callback) => {
         if (typeof json != "object") {
@@ -160,98 +210,51 @@ export default async function run(config: Config) {
         console.error(`Error: ${error} on log: ${log}`)
     })
 
+    const teardown = async () => {
+        if (!taskQueue.idle()) {
+            await taskQueue.drain()
+        }
+
+        if (!logQueue.idle()) {
+            await logQueue.drain()
+        }
+
+        console.log("Finished writing")
+
+        await new Promise<void>((resolve) => {
+            if (dataStream.closed && logStream.closed) {
+                resolve()
+            }
+            dataStream.end(() => {
+                logStream.end(() => {
+                    resolve()
+                })
+            })
+        })
+
+        console.log("Closed write streams")
+    }
+
+    ;["SIGINT", "SIGTERM", "SIGQUIT"].forEach((signal) => {
+        process.on(signal, teardown)
+    })
+
     console.log("Set up write streams, starting download...")
 
     while (true) {
-        const url = new URL(BASE_URL)
-        url.searchParams.append("max_page_size", "100")
-        url.searchParams.append("order_by", "desc")
-        if (position.nextPageToken) {
-            url.searchParams.append("page_token", position.nextPageToken)
-        }
-
-        const maybeResponse = await fetch(url, options).catch((reason) =>
-            console.error(reason),
+        const maybeJson = await downloadPage(position, BASE_URL, options).catch(
+            (reason) => console.error(reason),
         )
 
-        // Response didn't occur, something went wrong
-        if (!maybeResponse) {
-            await sleep(backoff)
-            backoff += INCREMENT_BACKOFF
-            continue
-        }
-
-        const response = maybeResponse
-        const maybeText = await response
-            .text()
-            .catch(async (reason) =>
-                console.error(
-                    `Couldn't get response text, code ${response.status} ${response.statusText}, error: ${reason}`,
-                ),
-            )
-
-        if (!maybeText) {
-            await sleep(backoff)
-            backoff += INCREMENT_BACKOFF
-            continue
-        }
-
-        const text = maybeText
-
-        const maybeJson = await new Promise((resolve) => {
-            try {
-                const json = JSON.parse(text)
-                resolve(json)
-            } catch (e) {
-                console.error(`Couldn't parse to JSON: ${e}, raw text: ${text}`)
-            }
-        })
-
-        if (!maybeJson) {
+        if (!maybeJson || !maybeJson["entries"]) {
+            console.log(`Backing off for ${backoff}s`)
             await sleep(backoff)
             backoff += INCREMENT_BACKOFF
             continue
         }
 
         const json = maybeJson
-
-        if (
-            response.status != 429 &&
-            response.status < 200 &&
-            response.status >= 300
-        ) {
-            console.error(`Unexpected error ${response.status}: ${json}`)
-            await sleep(backoff)
-            backoff += INCREMENT_BACKOFF
-            continue
-        }
-
-        if (response.status == 429) {
-            console.error(`Ratelimit, backing off`)
-            await sleep(backoff)
-            backoff += INCREMENT_BACKOFF
-            continue
-        }
-
-        // Okay, we should be good now
-        const entries = json["entries"]
         const nextToken = json["nextPageToken"]
-
-        // But we validate the data structure because it's Roblox
-        if (!entries) {
-            console.error(
-                `Got invalid data structure at ${response.url} (${
-                    response.status
-                } ${response.statusText}): ${JSON.stringify(json, null, 4)}`,
-            )
-            await sleep(backoff)
-            backoff += INCREMENT_BACKOFF
-            continue
-        }
-
-        if (position.page == 1 || position.page % 10 == 0) {
-            console.log(`Got page ${position.page}`)
-        }
 
         taskQueue.push(json)
         logQueue.push(
@@ -260,7 +263,7 @@ export default async function run(config: Config) {
 
         // If no next token, we are done!
         if (!nextToken) {
-            console.log("No next page, finished!")
+            console.log("No next page, finished download!")
             break
         }
 
@@ -269,23 +272,7 @@ export default async function run(config: Config) {
         position.page += 1
     }
 
-    if (!taskQueue.idle()) {
-        await taskQueue.drain()
-    }
+    await teardown()
 
-    if (!logQueue.idle()) {
-        await logQueue.drain()
-    }
-
-    console.log("Finished writing")
-
-    await new Promise<void>((resolve) => {
-        dataStream.end(() => {
-            logStream.end(() => {
-                resolve()
-            })
-        })
-    })
-
-    console.log("Closed write streams")
+    console.log("Done")
 }
