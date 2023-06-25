@@ -22,6 +22,11 @@ interface Position {
     page: number
 }
 
+interface WriteTask {
+    json: unknown
+    logMessage: string
+}
+
 function sleep(seconds: number) {
     return new Promise((resolve) => setTimeout(resolve, seconds * 1000))
 }
@@ -187,12 +192,12 @@ export default async function run(config: Config) {
         },
     )
 
-    const taskQueue = async.queue<unknown>(async (json, callback) => {
-        if (typeof json != "object") {
+    const writeTaskQueue = async.queue<WriteTask>(async (task, callback) => {
+        if (typeof task.json != "object") {
             return
         }
 
-        const entries = json["entries"]
+        const entries = task.json["entries"]
 
         if (!entries) {
             return
@@ -207,33 +212,21 @@ export default async function run(config: Config) {
             }
         }
 
+        await write(logStream, task.logMessage + "\n")
+
         callback()
     }, 1)
 
-    taskQueue.error((error, task) => {
+    writeTaskQueue.error((error, task) => {
         console.error(`Error: ${error} on task: ${task}`)
-    })
-
-    const logQueue = async.queue<string>(async (message, callback) => {
-        await write(logStream, message + "\n")
-
-        callback()
-    }, 1)
-
-    logQueue.error((error, log) => {
-        console.error(`Error: ${error} on log: ${log}`)
     })
 
     // Define teardown function for when we are done OR if we need to exit early
     const teardown = async () => {
         running = false
 
-        if (!taskQueue.idle()) {
-            await taskQueue.drain()
-        }
-
-        if (!logQueue.idle()) {
-            await logQueue.drain()
+        if (!writeTaskQueue.idle()) {
+            await writeTaskQueue.drain()
         }
 
         console.log("Finished writing")
@@ -278,10 +271,10 @@ export default async function run(config: Config) {
         const json = maybeJson
         const nextToken = json["nextPageToken"]
 
-        taskQueue.push(json)
-        logQueue.push(
-            `${nextToken} <- Next page token | Got page ${position.page} (${position.nextPageToken})`,
-        )
+        writeTaskQueue.push({
+            json: json,
+            logMessage: `${nextToken} <- Next page token | Got page ${position.page} (${position.nextPageToken})`,
+        })
 
         // Output status update
         if (position.page == 1 || position.page % 10 == 0) {
