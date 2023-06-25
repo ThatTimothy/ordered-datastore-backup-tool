@@ -297,10 +297,7 @@ export default async function run(config: Config) {
         }
 
         // Update variables for next loop
-        backoff = Math.max(
-            backoff - INCREMENT_RETURN_BACKOFF,
-            INCREMENT_BACKOFF,
-        ) // Slowly return to normal after success
+        backoff = Math.max(backoff - INCREMENT_RETURN_BACKOFF, STARTING_BACKOFF) // Slowly return to normal after success
         position.nextPageToken = nextToken
         position.page += 1
     }
