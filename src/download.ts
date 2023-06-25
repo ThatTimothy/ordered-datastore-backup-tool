@@ -279,6 +279,11 @@ export default async function run(config: Config) {
             `${nextToken} <- Next page token | Got page ${position.page} (${position.nextPageToken})`,
         )
 
+        // Output status update
+        if (position.page == 1 || position.page % 10 == 0) {
+            console.log(`Got page ${position.page}`)
+        }
+
         // If no next token, we are done!
         if (!nextToken) {
             console.log("No next page, finished download!")
