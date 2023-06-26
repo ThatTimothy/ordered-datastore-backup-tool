@@ -27,6 +27,7 @@ git clone https://github.com/ThatTimothy/ordered-datastore-backup-tool.git
 Simply run:
 
 ```bash
+npm install
 npm run run
 ```
 
