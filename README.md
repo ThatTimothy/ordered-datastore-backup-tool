@@ -1,5 +1,7 @@
 # ordered-datastore-backup-tool
 
+![ordered-datastore-backup-tool screenshot of inputting various inputs](screenshots/main.png)
+
 Backs up an ordered datastore into a csv using [Roblox's Open Cloud API](https://create.roblox.com/docs/cloud/open-cloud).
 
 # Download
