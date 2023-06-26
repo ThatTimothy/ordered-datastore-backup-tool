@@ -17,7 +17,7 @@ Backs up an ordered datastore into a csv using [Roblox's Open Cloud API](https:/
 Simply clone the repo (if you don't have git, [install it](https://git-scm.com/downloads)):
 
 ```bash
-git clone https://github.com/ThisStudio/ordered-datastore-backup-tool.git
+git clone https://github.com/ThatTimothy/ordered-datastore-backup-tool.git
 ```
 
 # Usage
