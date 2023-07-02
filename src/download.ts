@@ -208,7 +208,7 @@ export default async function run(config: Config) {
             const id = entry["id"]
             const value = entry["value"]
 
-            if (id && value) {
+            if (id && typeof(value) === "number") {
                 await write(dataStream, `${id},${value}\n`)
             }
         }
